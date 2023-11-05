@@ -45,6 +45,7 @@ try:
     # Setup Chrome options
     chrome_options = Options()
     chrome_options.add_argument("--lang=en")  # Set language to English
+    chrome_options.add_experimental_option('prefs', {'intl.accept_languages': 'en'})
     # chrome_options.add_argument("--headless")  # Uncomment if you want to run Chrome in headless mode
 
     # Initialize the Chrome driver
@@ -76,6 +77,6 @@ try:
 except Exception as e:
     print(f"An error occurred: {e}")
 
-#finally:
+finally:
     # Close the driver after you are done
-    #driver.quit()
+    driver.quit()
