@@ -6,11 +6,22 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from datetime import datetime
 import time
 import csv
+import os
+
+def reset_output_csv(csv_filename):
+    if os.path.exists(csv_filename):
+        os.remove(csv_filename)
+
+def read_input_csv(filename):
+    with open(filename, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)
+        return list(csv_reader)
 
 def scroll_and_expand_reviews(driver, timeout=2, max_scroll_attempts=10):
     actions = ActionChains(driver)
@@ -51,7 +62,6 @@ def scroll_and_expand_reviews(driver, timeout=2, max_scroll_attempts=10):
         scroll_attempts2 += 1
 
 def safe_extract(element, class_name, attribute=None):
-    """Safely extract information from an element, return 'NA' if not found."""
     try:
         if attribute:
             return element.find_element(By.CLASS_NAME, class_name).get_attribute(attribute)
@@ -60,13 +70,15 @@ def safe_extract(element, class_name, attribute=None):
     except NoSuchElementException:
         return 'NA'
 
-def scroll_and_extract_reviews(driver, csv_filename, timeout=2, max_scroll_attempts=10):
+def scroll_and_extract_reviews(driver, csv_filename, location_name, timeout=2, max_scroll_attempts=10):
     actions = ActionChains(driver)
+    file_exists = os.path.exists(csv_filename)  # Check if the file already exists
 
-    with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+    with open(csv_filename, mode='a', newline='', encoding='utf-8') as file:  # Open file in append mode
         writer = csv.writer(file)
-        header = ['Location', 'Reviewer', 'Rating', 'Relative time', 'Scraping time', 'Review']
-        writer.writerow(header)
+        if not file_exists:  # If the file does not exist, write the header
+            header = ['Location', 'Reviewer', 'Rating', 'Relative time', 'Scraping time', 'Review']
+            writer.writerow(header)
 
         previous_length = 0
         scroll_attempts = 0
@@ -86,10 +98,10 @@ def scroll_and_extract_reviews(driver, csv_filename, timeout=2, max_scroll_attem
                     review_text = safe_extract(review_container, "wiI7pd")
                     rating = safe_extract(review_container, "kvMYJc", attribute="aria-label")
                     relative_time = safe_extract(review_container, "rsqaWe")
-                    scraping_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    scraping_time = datetime.now().strftime("%Y-%m-%d,%H:%M:%S")
 
                     # Write the review to the CSV file
-                    writer.writerow(['NA', reviewer, rating, relative_time, scraping_time, review_text])
+                    writer.writerow([location_name, reviewer, rating, relative_time, scraping_time, review_text])
 
                 previous_length = len(review_containers)
                 scroll_attempts = 0
@@ -131,38 +143,44 @@ def click_sort_option(driver, option='default'):
         print(f"An error occurred: {e}")
 
 try:
-    # Setup Chrome options
+    reset_output_csv('reviews.csv')
+    
     chrome_options = Options()
-    chrome_options.add_argument("--lang=en-GB")  # Set language to English
+    chrome_options.add_argument("--lang=en-GB")  # EN
     chrome_options.add_experimental_option('prefs', {'intl.accept_languages': 'en-GB'})
     # chrome_options.add_argument("--headless")  # Uncomment to run Chrome in headless mode
 
-    # Initialize the Chrome driver
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
-    # Open the specified URL
-    url = "https://www.google.com/maps/place/Gaasperplas/@52.3069241,4.9864444,16z/data=!4m12!1m2!2m1!1sGaasperplas!3m8!1s0x47c60c5dbd560937:0xd8ce181a2c1f975b!8m2!3d52.3058653!4d4.994065!9m1!1b1!15sCgtHYWFzcGVycGxhc1oNIgtnYWFzcGVycGxhc5IBBGxha2WaASNDaFpEU1VoTk1HOW5TMFZKUTBGblNVUmhYelpwWkVGbkVBReABAA!16s%2Fg%2F11bc656tmn?entry=ttu"
-    driver.get(url)
     
-    # Wait for the button with jsname='tWT92d' to be present and clickable, to handle the cookie pop-up
-    close_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[jsname='tWT92d']"))
-    )
-
-    # Scroll the close_button element into view and close it
-    driver.execute_script("arguments[0].scrollIntoView(true);", close_button)
-    close_button.click()
+    input_data = read_input_csv('urls.csv')
     
-    # Call the click_sort_option function to sort the reviews by 'newest'
-    click_sort_option(driver, 'newest')
-    
-    # Scroll and click "Show More" until all reviews are expanded or until 10 scroll attempts with no new reviews
-    scroll_and_expand_reviews(driver, timeout=0.1, max_scroll_attempts=10)
+    for data in input_data:
+        url = data['URL']
+        location_name = data['Location']
+        driver.get(url)
 
-    # Extract the reviews and write them to a CSV file
-    scroll_and_extract_reviews(driver, 'reviews.csv', timeout=0.1)
+        # Wait for the button with jsname='tWT92d' to be present and clickable, to handle the cookie pop-up
+        try:
+            close_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[jsname='tWT92d']"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView(true);", close_button)
+            close_button.click()
+        except Exception as e:
+            pass
+        
+        # Call the click_sort_option function to sort the reviews by 'newest'
+        click_sort_option(driver, 'newest')
 
-    input("Press Enter to quit...")  # Keep the window open until user presses Enter
+        # Scroll and click "Show More" until all reviews are expanded or until 10 scroll attempts with no new reviews
+        scroll_and_expand_reviews(driver, timeout=0.1, max_scroll_attempts=10)
+
+        # Extract the reviews and write them to the output CSV file
+        scroll_and_extract_reviews(driver, 'reviews.csv', timeout=0.1, location_name=location_name)  # Pass the location name
+
+        time.sleep(5)
+
+    input("Press Enter to quit...")  # Keep the window open until presses Enter
 
 except Exception as e:
     print(f"An error occurred: {e}")
