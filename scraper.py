@@ -125,12 +125,12 @@ def click_sort_option(driver, option='default'):
 
     try:
         # Click the sort button to open the submenu
-        sort_buttons = WebDriverWait(driver, 10).until(
+        sort_buttons = WebDriverWait(driver, 5).until(
             EC.presence_of_all_elements_located((By.CLASS_NAME, 'DVeyrd'))
         )
         sort_buttons[2].click()
 
-        time.sleep(1)
+        time.sleep(0.5)
 
         submenu_option = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, f".fxNQSd[data-index='{sort_options[option]}']"))
@@ -178,8 +178,9 @@ try:
         # Extract the reviews and write them to the output CSV file
         scroll_and_extract_reviews(driver, 'reviews.csv', timeout=0.1, location_name=location_name)  # Pass the location name
 
-        time.sleep(5)
-
+        time.sleep(0.5)
+        
+    print("Finished scraping reviews!")
     input("Press Enter to quit...")  # Keep the window open until presses Enter
 
 except Exception as e:
